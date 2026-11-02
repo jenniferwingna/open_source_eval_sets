@@ -119,7 +119,7 @@ table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{bo
 <h2 id="integrate">3. 集成建议</h2>
 <h3>3.1 可直接落地的部分</h3>
 <ol>
-<li>用 <code>meena_loader/load_meena.py</code> 把 4 份对话转成 JSONL（已验证：402 段，Human 8,… 无空 turn）。</li>
+<li>用 <code>meena_loader/load_meena.py</code> 把 4 份对话转成 JSONL（已验证：402 段对话，无空 turn）。</li>
 <li>把 Meena 对话切成“前 1–3 轮上下文 → 下一条回复”，作为 MTB 风格的静态样例；或把 Meena/Mitsuku/XiaoIce/人类回复当作 judge 的区分度检验（预期排序：人类 &gt; Meena &gt; Mitsuku ≈ Cleverbot &gt; DialoGPT &gt; XiaoIce）。</li>
 <li>judge prompt：按 §2.3 三问，逐问 0/1，且<b>层级化</b>：不 sensible → specific、interesting 自动为 0。</li>
 <li>汇总：SSA = mean(sens, spec)；SSI = mean(sens, spec, interest)；同时报 GenericBot 基线（对问句答 “I don’t know”，陈述句答 “ok”）。</li>
