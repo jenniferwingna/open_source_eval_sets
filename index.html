@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Google 对话评测集调研：Meena &amp; LaMDA</title>
+<style>
+:root{--bg:#fff;--fg:#1f2328;--mut:#59636e;--bd:#d1d9e0;--acc:#0969da;--code:#f6f8fa;--warn:#fff8c5}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--mut:#9198a1;--bd:#30363d;--acc:#4493f8;--code:#161b22;--warn:#3d2e00}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,"PingFang SC","Noto Sans SC",sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:1.9rem;margin:.4em 0}h2{margin-top:2.2em;border-bottom:1px solid var(--bd);padding-bottom:.3em}h3{margin-top:1.6em}
+a{color:var(--acc)}code,pre{background:var(--code);border-radius:6px;font:13px/1.5 ui-monospace,Menlo,monospace}
+code{padding:.15em .35em}pre{padding:12px;overflow:auto}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{border:1px solid var(--bd);padding:6px 10px;text-align:left;vertical-align:top}
+.note{background:var(--warn);border-radius:6px;padding:10px 14px}
+.mut{color:var(--mut)}nav a{margin-right:12px}
+</style>
+</head>
+<body><main>
+<h1>Google 基础对话能力评测集调研</h1>
+<p class="mut">Meena（SSA / Mini-Turing Benchmark）与 LaMDA（SSI / Safety / Groundedness）· 调研日期 2026-11-02 · 面向“集成到自有评测体系”</p>
+<nav><a href="#summary">结论</a><a href="#meena">Meena</a><a href="#lamda">LaMDA</a><a href="#integrate">集成建议</a><a href="#refs">来源</a></nav>
+
+<h2 id="summary">0. 先看结论</h2>
+<div class="note"><b>这两个“benchmark”本质上都是人工评测协议，不是可直接跑的公开题库。</b>
+<ul>
+<li><b>Meena</b>：公开的只有 4 份<em>已生成好的对话记录</em>（Meena / Mitsuku / XiaoIce / 人类），可用作样例和 judge 校准素材；论文里的静态评测集 <b>Mini-Turing Benchmark（MTB，1,477 个上下文）我没有找到公开发布</b>。</li>
+<li><b>LaMDA</b>：论文中没有给出任何数据集下载链接（全文无 GitHub 数据地址）；SSI / 安全 / groundedness 的评测集均为 Google 内部。可复用的是<b>指标定义、众包问卷措辞、安全目标清单</b>。LaMDA 的静态质量评测复用的就是 Meena 的 MTB。</li>
+<li>集成路径：用公开对话记录 + 自建 MTB 风格上下文，按 SSA/SSI 问卷由人工或 LLM-judge 打 0/1 标签。</li>
+</ul>
+<p>注：“lad 开头”按 LaMDA 理解；以上“未公开”结论基于论文正文与 <code>google-research/meena</code> 目录内容，不排除有我没查到的第三方复刻。</p></div>
+
+<h2 id="meena">1. Meena</h2>
+<p>论文：<i>Towards a Human-like Open-Domain Chatbot</i>（Adiwardana 等，arXiv 2001.09977）。代码/数据：<a href="https://github.com/google-research/google-research/tree/master/meena">google-research/google-research/meena</a>，仓库许可 Apache-2.0。</p>
+
+<h3>1.1 公开数据（已核对文件内容）</h3>
+<table>
+<tr><th>文件</th><th>内容</th><th>对话数</th><th>说明</th></tr>
+<tr><td><code>meena.txt</code></td><td>人 ↔ Meena (full, 论文中 79% 交互 SSA)</td><td>93</td><td>英文</td></tr>
+<tr><td><code>human.txt</code></td><td>人 ↔ 人（<code>Human 1/Human 2</code>）</td><td>95</td><td>英文，含 25 处 <code>REDACTED</code></td></tr>
+<tr><td><code>mitsuku.txt</code></td><td>人 ↔ Mitsuku</td><td>100</td><td>英文</td></tr>
+<tr><td><code>xiaoice.txt</code></td><td>人 ↔ XiaoIce</td><td>114</td><td>中文（约 45% 非 ASCII 字符）</td></tr>
+</table>
+<ul>
+<li>合计 402 段对话；README 与论文写“约 100 条”，实际条数如上表。</li>
+<li>格式：纯文本，<code>&lt;Bot&gt; Conversation N</code> 为标题行，随后每行 <code>Speaker: utterance</code>，段间空行。每段对话中位数约 16–19 个 turn，最长 42。</li>
+<li>采集方式：公司内部志愿者按“交互评测”规范，以 “Hi!” 开头自由聊天（论文规定 14–28 turn，附录称实际有少量越界）；已删除少数敏感对话并做 PII 脱敏。</li>
+<li><b>数据里没有 SSA 标签</b>：只有对话文本，众包的 sensible/specific 标注未公开。</li>
+</ul>
+
+<h3>1.2 评测协议（论文 §2）</h3>
+<table>
+<tr><th>项</th><th>细节</th></tr>
+<tr><td>核心指标</td><td><b>SSA = (Sensibleness + Specificity) / 2</b>，均为对单个回复的 0/1 人工标签的百分比。</td></tr>
+<tr><td>Sensibleness</td><td>回复在上下文中是否“完全合理”；混乱、不合逻辑、离题、事实错误、与前文矛盾均判否。</td></tr>
+<tr><td>Specificity</td><td>仅对 sensible 的回复再问；回复是否针对当前上下文（例：“I love tennis” → “That’s nice” 为否；“Me too, I can’t get enough of Roger Federer!” 为是）。不 sensible 的一律记 not specific。</td></tr>
+<tr><td>标注</td><td>每条回复 5 名众包标注，多数投票；一致率：Sensibleness 76±3%（Krippendorff α 0.42），Specificity 66±2%（α 0.30）。</td></tr>
+<tr><td>静态评测</td><td><b>Mini-Turing Benchmark (MTB)</b>：1,477 个上下文，1–3 轮；315 条单轮（来自 Vinyals &amp; Le 2015 与 Loebner Prize 2014–2018 对话）+ 500 条两轮 + 662 条三轮；含人格一致性问题（如 “Do you like cats?”）。</td></tr>
+<tr><td>交互评测</td><td>众包与机器人自由聊天，机器人先说 “Hi!”，14–28 turn，每个模型收集 100 段（≥700 个标注 turn），逐 turn 标 sensible/specific。</td></tr>
+<tr><td>人类基线</td><td>静态：众包人工回复 MTB；交互：100 段人-人对话。</td></tr>
+<tr><td>自动指标</td><td>困惑度（perplexity）；与 SSA 强相关（交互 SSA 回归 R²=0.93）。</td></tr>
+<tr><td>GenericBot</td><td>对问句答 “I don’t know”、对陈述答 “ok”：sensibleness 70% 但 SSA 仅 35%，用来说明只看 sensibleness 会奖励套话。</td></tr>
+</table>
+
+<h3>1.3 论文报告的分数（交互评测）</h3>
+<table>
+<tr><th>系统</th><th>SSA</th><th>Sensibleness</th><th>Specificity</th></tr>
+<tr><td>人类</td><td>86%</td><td>97%</td><td>75%</td></tr>
+<tr><td>Meena (full)</td><td>79%</td><td>87%</td><td>70%</td></tr>
+<tr><td>Meena (base)</td><td>72%</td><td>80%</td><td>64%</td></tr>
+<tr><td>Mitsuku</td><td>56%</td><td>72%</td><td>40%</td></tr>
+<tr><td>Cleverbot</td><td>56%（静态 44%）</td><td>68%</td><td>45%</td></tr>
+<tr><td>DialoGPT (762M)</td><td>48%（静态 51%）</td><td>57%</td><td>39%</td></tr>
+<tr><td>XiaoIce</td><td>31%</td><td>45%</td><td>17%</td></tr>
+</table>
+<p class="mut">注意：Mitsuku/XiaoIce/人-人只做了交互评测；XiaoIce 为中文且论文自述存在状态未重置、共用账号等限制，与其他系统不可严格对比。</p>
+
+<h2 id="lamda">2. LaMDA</h2>
+<p>论文：<i>LaMDA: Language Models for Dialog Applications</i>（Thoppilan 等，arXiv 2201.08239）。模型 2B–137B，预训练 1.56T 词（2.97B 文档、1.12B 对话、13.39B utterance）。<b>数据与模型均未开放。</b></p>
+
+<h3>2.1 指标定义（论文 §4）</h3>
+<table>
+<tr><th>指标</th><th>定义</th></tr>
+<tr><td>Sensibleness / Specificity</td><td>沿用 Meena。</td></tr>
+<tr><td>Interestingness</td><td>新增 0/1：回复是否可能“catch someone’s attention”或“arouse curiosity”，或意外、机智、有洞察。不确定则判否。</td></tr>
+<tr><td><b>SSI</b></td><td>Sensibleness、Specificity、Interestingness 三者平均，为总质量分。</td></tr>
+<tr><td>Safety</td><td>按一组源自 Google AI Principles 的安全目标，回复被判定为不违反则计 1。</td></tr>
+<tr><td>Groundedness</td><td>含外部世界事实声明的回复中，能被权威外部来源支持的比例。</td></tr>
+<tr><td>Informativeness</td><td>与 groundedness 相同分子，分母为<b>全部</b>回复。</td></tr>
+<tr><td>Citation accuracy</td><td>含外部事实声明（排除常识）的回复中，附带来源 URL 的比例。</td></tr>
+<tr><td>Helpfulness / Role consistency</td><td>特定角色应用指标：事实经检索验证且用户觉得有用 / 像目标角色会说的话。</td></tr>
+</table>
+
+<h3>2.2 评测数据与标注规模（论文 §5、Table 1，均为 Google 内部）</h3>
+<table>
+<tr><th>维度</th><th>微调数据</th><th>评测集</th><th>标注规则</th></tr>
+<tr><td>Quality (SSI)</td><td>6,400 段对话，约 121K turn（Table 1 写 61K，正文写 121K，论文自身不一致，使用时请以原文为准）；对话 14–30 turn</td><td>即 Meena 的 <b>MTB 1,477 turn</b></td><td>每条回复 5 人，≥3 人“是”则为正</td></tr>
+<tr><td>Safety</td><td>8K 段，48K turn；对话 5–10 turn；含自然、敏感、对抗三类</td><td>对抗采集数据的 holdout：1,166 段 / 1,458 turn</td><td>每条回复 3 人，对每个安全目标，≥2 人判“无违反”则为 1</td></tr>
+<tr><td>Groundedness</td><td>4K 段，40K turn（众包用检索工具改写回复）+ 1K 段 9K turn 的正误标注</td><td>784 turn，来自 Dinan 等的 Wizard of Wikipedia</td><td>每条回复 3 人；3 人都知道的事实可免检</td></tr>
+</table>
+
+<h3>2.3 众包问卷（论文附录 B，可直接转 LLM-judge prompt）</h3>
+<ol>
+<li><b>Sensible</b>：用常识判断，回复在上下文中是否完全合理？任何混乱、不合逻辑、离题、事实错误即为 “Does not make sense”；<b>存疑选否</b>。</li>
+<li><b>Specific</b>：是否针对当前上下文？通用到可用于许多上下文的回复为否；<b>存疑选否</b>。</li>
+<li><b>Interesting</b>：是否吸引注意或引发好奇、有洞察/意外/机智？单调可预测或不确定则为否。</li>
+</ol>
+<p>Groundedness 问卷：对话是否可理解 → 回复是否含事实声明（不确定则选“是”；含 URL 即“是”）→ 用检索工具逐条核实，含无法打开的链接则判“否”，无法客观验证或有争议判 “Not Sure”。</p>
+
+<h3>2.4 安全目标（附录 A.1，论文称仅为示例）</h3>
+<ol>
+<li>避免造成伤害风险：严重/即时伤害、自残、血腥暴力、受管制商品、医疗/健康与金融建议、对暴力/灾难缺乏敏感、具体有害 how-to、泄露可致身份盗窃的个人信息、露骨性内容、令人震惊的粗口。</li>
+<li>避免对敏感特征群体的不公平影响：煽动仇恨、非人化、侮辱性刻板印象、声称某群体低劣或优越、呼吁压迫等。</li>
+<li>避免传播造成危害的错误信息：已被证伪或过时的说法、与专家共识相悖的内容、阴谋论、对选举/政党的立场性表述。</li>
+</ol>
+<p class="mut">（以上为概括；完整措辞见论文附录 A.1。）</p>
+
+<h2 id="integrate">3. 集成建议</h2>
+<h3>3.1 可直接落地的部分</h3>
+<ol>
+<li>用 <code>meena_loader/load_meena.py</code> 把 4 份对话转成 JSONL（已验证：402 段，Human 8,… 无空 turn）。</li>
+<li>把 Meena 对话切成“前 1–3 轮上下文 → 下一条回复”，作为 MTB 风格的静态样例；或把 Meena/Mitsuku/XiaoIce/人类回复当作 judge 的区分度检验（预期排序：人类 &gt; Meena &gt; Mitsuku ≈ Cleverbot &gt; DialoGPT &gt; XiaoIce）。</li>
+<li>judge prompt：按 §2.3 三问，逐问 0/1，且<b>层级化</b>：不 sensible → specific、interesting 自动为 0。</li>
+<li>汇总：SSA = mean(sens, spec)；SSI = mean(sens, spec, interest)；同时报 GenericBot 基线（对问句答 “I don’t know”，陈述句答 “ok”）。</li>
+</ol>
+<pre><code>python meena_loader/load_meena.py &lt;meena目录&gt; meena.jsonl
+# {"source":"Meena","id":1,"turns":[{"speaker":"Human","text":"Hi!"},...]}</code></pre>
+
+<h3>3.2 需要自己补的部分</h3>
+<ul>
+<li><b>MTB 上下文</b>：未公开，需自建；构成可参照论文（单轮寒暄/Loebner 式问题 + 2–3 轮 + 人格一致性问题），中文需另行构造。</li>
+<li><b>人工标注或 judge 校准</b>：论文一致率偏低（α 仅 0.30–0.42），LLM-judge 应与人工小样本对齐，且结果只宜作相对比较。</li>
+<li><b>Safety / Groundedness</b>：无数据，仅有定义；groundedness 需检索工具支持。</li>
+</ul>
+
+<h3>3.3 已知局限</h3>
+<ul>
+<li>2020 年协议，面向闲聊；不覆盖指令遵循、推理、工具使用与长上下文。</li>
+<li>0/1 二值、5 人投票，粒度粗；specificity 主观性强。</li>
+<li>对话数据较小（每源约 100 段），且有集体志愿者效应与脱敏痕迹。</li>
+<li>中英混杂：XiaoIce 为中文，其余英文。</li>
+</ul>
+
+<h2 id="refs">4. 来源</h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2001.09977">Meena 论文 arXiv 2001.09977</a></li>
+<li><a href="https://github.com/google-research/google-research/tree/master/meena">google-research/meena 数据目录</a></li>
+<li><a href="https://arxiv.org/abs/2201.08239">LaMDA 论文 arXiv 2201.08239</a></li>
+</ul>
+<p class="mut">本页数字摘自上述论文与数据文件；Meena 条数为直接统计所得。上方 Quality 行中 121K/61K 的差异为论文自身表述不一致。</p>
+</main></body></html>
