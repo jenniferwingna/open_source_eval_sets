@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>中文基础对话评测集用例看板</title>
+<style>
+:root{--bg:#fff;--fg:#1f2328;--mut:#59636e;--bd:#d1d9e0;--panel:#f6f8fa;--acc:#0969da}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--mut:#9198a1;--bd:#30363d;--panel:#161b22;--acc:#4493f8}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,"PingFang SC","Noto Sans SC",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 64px;display:flex;flex-direction:column;gap:16px}
+h1{margin:0;font-size:1.7rem}h2{margin:0;font-size:1.05rem}p{margin:0}a{color:var(--acc)}
+.card{background:var(--panel);border:1px solid var(--bd);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+select,input{font:inherit;padding:.35rem .5rem;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg);min-width:0;max-width:100%}
+input{flex:1 1 14rem}.mut{color:var(--mut);font-size:13px}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0}dt{color:var(--mut)}dd{margin:0;overflow-wrap:anywhere}
+ul{margin:0;padding-left:1.2rem}
+.box{max-height:70vh;overflow:auto;border:1px solid var(--bd);border-radius:8px}
+table{border-collapse:collapse;width:100%}
+th{position:sticky;top:0;background:var(--panel);text-align:left;padding:8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--bd);vertical-align:top;white-space:pre-wrap;overflow-wrap:anywhere}
+td:first-child{white-space:nowrap;color:var(--mut);font-size:13px}td:nth-child(2){min-width:16rem}
+td.empty{color:var(--mut)}
+</style>
+</head>
+<body><main>
+<p class="mut"><a href="./">← 返回 Meena / LaMDA 调研</a></p>
+<h1>中文基础对话评测集用例看板</h1>
+<p>三个公开评测集（URO-Bench、VocalBench-zh、TELEVAL）共 22 个与基础对话相关的子集，每个子集 20 条原始样本，用于判断是否适合集成。输入与参考答案均取自 Hugging Face 数据集接口，未改写。</p>
+<div class="card"><h2>抽样说明</h2><ul>
+<li>多数子集取前 20 条。VocalBench-zh 的 instruction_following、reasoning、emotional_empathy 按类别成块排列，前 20 条只覆盖一个类别，因此改为按行号分段抽样，抽样方式见各子集说明。</li>
+<li>标注“…[截断]”的内容是取数时被截断的原文，不是数据集本身的写法；“字段过长，接口未返回原文”表示该条参考答案未取到。</li>
+<li>未包含：VCB Bench（数据集不在该接口中，未取到样本）；VocalBench-zh 的 multi_round（取数两次失败）；各数据集的声学鲁棒性、方言、创作等非基础子集。</li>
+<li>URO-Bench 的 HSK5-zh、SQuAD-zh、APE-zh、Wildchat-zh 评分方式不在读到的论文版本里，标为未核实。</li>
+<li>样本版权归各数据集原作者，使用前请核对各自许可协议。</li></ul></div>
+<div class="card">
+<div class="bar">
+<label for="b">评测集</label><select id="b"><option value="">全部</option><option>URO-Bench</option><option>VocalBench-zh</option><option>TELEVAL</option></select>
+<label for="s">子集</label><select id="s"></select>
+<input id="q" type="search" placeholder="在输入、参考答案中搜索" aria-label="搜索">
+<span class="mut">当前 <b id="n">—</b> 条</span></div>
+<div id="info"></div></div>
+<div class="box"><table><thead><tr><th>编号</th><th>输入（语音转写文本）</th><th>参考答案</th><th>标签</th></tr></thead><tbody id="rows"></tbody></table></div>
+<script>
+const st={b:'',s:'',q:''};let cases=[],subs=[];
+const $=id=>document.getElementById(id);
+function filtered(){return cases.filter(r=>(!st.b||r.bench===st.b)&&(!st.s||r.subset===st.s)&&(!st.q||(r.input+'\n'+r.reference+'\n'+r.tag+'\n'+r.uid).includes(st.q)))}
+function drawSel(){const el=$('s');el.replaceChildren(new Option('全部子集',''),...subs.filter(r=>!st.b||r.bench===st.b).map(r=>new Option(`${r.bench} / ${r.name}（共 ${r.total} 条）`,r.subset)));el.value=st.s}
+function drawInfo(){const el=$('info');el.replaceChildren();const r=subs.find(x=>x.subset===st.s);if(!r)return;
+ const dl=document.createElement('dl');[['数据集',r.repo+' / '+r.name],['全量条数',r.total],['本页抽样',r.sampling],['评分方式',r.scoring],['原始列',r.columns],['观察',r.note]].forEach(([k,v])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;dl.append(dt,dd)});el.append(dl)}
+function drawRows(){const f=filtered();$('n').textContent=f.length;$('rows').replaceChildren(...f.map(r=>{const tr=document.createElement('tr');
+ [r.uid,r.input,r.reference,r.tag].forEach((v,i)=>{const td=document.createElement('td');td.textContent=i===2&&!v?'无参考答案':v;if(i===2&&!v)td.className='empty';tr.append(td)});return tr}))}
+$('b').onchange=e=>{st.b=e.target.value;st.s='';drawSel();drawInfo();drawRows()};
+$('s').onchange=e=>{st.s=e.target.value;drawInfo();drawRows()};
+$('q').oninput=e=>{st.q=e.target.value.trim();drawRows()};
+Promise.all([fetch('data/cases.json').then(r=>r.json()),fetch('data/subsets.json').then(r=>r.json())]).then(([c,s])=>{cases=c;subs=s;drawSel();drawInfo();drawRows()}).catch(e=>{$('n').textContent='加载失败'});
+</script>
+</main></body></html>
